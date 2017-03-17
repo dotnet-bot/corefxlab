@@ -11,14 +11,33 @@ namespace System.IO.Pipelines
     {
         private static readonly Action _awaitableIsCompleted = () => { };
         private static readonly Action _awaitableIsNotCompleted = () => { };
+        private static readonly Action<object> _cancelOperation = (state) => { };
 
         private CancelledState _cancelledState;
         private Action _state;
+        private CancellationToken _cancellationToken;
+        private CancellationTokenRegistration _cancellationTokenRegistration;
 
         public PipeAwaitable(bool completed)
         {
             _cancelledState = CancelledState.NotCancelled;
             _state = completed ? _awaitableIsCompleted : _awaitableIsNotCompleted;
+        }
+
+
+
+        public void AttachToken(CancellationToken cancellationToken, Action<object> callback, object state)
+        {
+            if (cancellationToken != _cancellationToken)
+            {
+                _cancellationTokenRegistration.Dispose();
+                _cancellationToken = cancellationToken;
+                if (_cancellationToken != CancellationToken.None)
+                {
+                    _cancellationToken.ThrowIfCancellationRequested();
+                    _cancellationTokenRegistration = _cancellationToken.Register(callback, state);
+                }
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -55,6 +74,8 @@ namespace System.IO.Pipelines
 
         public Action OnCompleted(Action continuation, ref PipeCompletion completion)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
+
             var awaitableState = _state;
             if (ReferenceEquals(awaitableState, _awaitableIsNotCompleted))
             {
@@ -87,6 +108,8 @@ namespace System.IO.Pipelines
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool ObserveCancelation()
         {
+            _cancellationToken.ThrowIfCancellationRequested();
+
             if (_cancelledState == CancelledState.CancellationRequested)
             {
                 _cancelledState = CancelledState.CancellationObserved;
