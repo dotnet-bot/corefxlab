@@ -53,6 +53,30 @@ namespace System.IO.Pipelines.Tests
         }
 
         [Fact]
+        public void GetResultThrowsIfFlushAsyncTokenFiredAfterCancelPending()
+        {
+            var onCompletedCalled = false;
+            var cancellationTokenSource = new CancellationTokenSource();
+
+            var awaiter = Pipe.Reader.ReadAsync(cancellationTokenSource.Token);
+            var awaiterIsCompleted = awaiter.IsCompleted;
+
+            cancellationTokenSource.Cancel();
+            Pipe.Reader.CancelPendingRead();
+
+            awaiter.OnCompleted(() =>
+            {
+                onCompletedCalled = true;
+                Assert.Throws<OperationCanceledException>(() => awaiter.GetResult());
+            });
+
+
+            Assert.False(awaiterIsCompleted);
+            Assert.True(onCompletedCalled);
+        }
+
+
+        [Fact]
         public void ReadAsyncThrowsIfPassedCancelledCancellationToken()
         {
             var cancellationTokenSource = new CancellationTokenSource();

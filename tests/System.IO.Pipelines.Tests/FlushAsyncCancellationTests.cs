@@ -55,6 +55,30 @@ namespace System.IO.Pipelines.Tests
         }
 
         [Fact]
+        public void GetResultThrowsIfFlushAsyncTokenFiredAfterCancelPending()
+        {
+            var onCompletedCalled = false;
+            var cancellationTokenSource = new CancellationTokenSource();
+            var buffer = Pipe.Writer.Alloc(PipeTest.MaximumSizeHigh);
+            buffer.Advance(MaximumSizeHigh);
+
+            var awaiter = buffer.FlushAsync(cancellationTokenSource.Token);
+            var awaiterIsCompleted = awaiter.IsCompleted;
+
+            Pipe.Writer.CancelPendingFlush();
+            cancellationTokenSource.Cancel();
+
+            awaiter.OnCompleted(() =>
+            {
+                onCompletedCalled = true;
+                Assert.Throws<OperationCanceledException>(() => awaiter.GetResult());
+            });
+
+            Assert.False(awaiterIsCompleted);
+            Assert.True(onCompletedCalled);
+        }
+
+        [Fact]
         public void FlushAsyncThrowsIfPassedCancelledCancellationToken()
         {
             var cancellationTokenSource = new CancellationTokenSource();
@@ -85,13 +109,13 @@ namespace System.IO.Pipelines.Tests
         [Fact]
         public void FlushAsyncReturnsCanceledIfFlushCancelled()
         {
-            var writableBuffer = _pipe.Writer.Alloc(64);
-            writableBuffer.Advance(64);
+            var writableBuffer = Pipe.Writer.Alloc(MaximumSizeHigh);
+            writableBuffer.Advance(MaximumSizeHigh);
             var flushAsync = writableBuffer.FlushAsync();
 
             Assert.False(flushAsync.IsCompleted);
 
-            _pipe.Writer.CancelPendingFlush();
+            Pipe.Writer.CancelPendingFlush();
 
             Assert.True(flushAsync.IsCompleted);
             var flushResult = flushAsync.GetResult();
@@ -101,10 +125,10 @@ namespace System.IO.Pipelines.Tests
         [Fact]
         public void FlushAsyncReturnsCanceledIfCancelledBeforeFlush()
         {
-            var writableBuffer = _pipe.Writer.Alloc(64);
-            writableBuffer.Advance(64);
+            var writableBuffer = Pipe.Writer.Alloc(MaximumSizeHigh);
+            writableBuffer.Advance(MaximumSizeHigh);
 
-            _pipe.Writer.CancelPendingFlush();
+            Pipe.Writer.CancelPendingFlush();
 
             var flushAsync = writableBuffer.FlushAsync();
 
