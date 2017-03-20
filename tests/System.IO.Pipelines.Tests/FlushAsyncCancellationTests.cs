@@ -37,7 +37,7 @@ namespace System.IO.Pipelines.Tests
             var onCompletedCalled = false;
             var cancellationTokenSource = new CancellationTokenSource();
             var buffer = Pipe.Writer.Alloc(PipeTest.MaximumSizeHigh);
-            buffer.Advance(PipeTest.MaximumSizeHigh);
+            buffer.Advance(MaximumSizeHigh);
 
             var awaiter = buffer.FlushAsync(cancellationTokenSource.Token);
             var awaiterIsCompleted = awaiter.IsCompleted;
@@ -80,6 +80,37 @@ namespace System.IO.Pipelines.Tests
             buffer.Advance(10);
             // Verifying that ReadAsync does not throw
             await buffer.FlushAsync(cancellationTokenSource2.Token);
+        }
+
+        [Fact]
+        public void FlushAsyncReturnsCanceledIfFlushCancelled()
+        {
+            var writableBuffer = _pipe.Writer.Alloc(64);
+            writableBuffer.Advance(64);
+            var flushAsync = writableBuffer.FlushAsync();
+
+            Assert.False(flushAsync.IsCompleted);
+
+            _pipe.Writer.CancelPendingFlush();
+
+            Assert.True(flushAsync.IsCompleted);
+            var flushResult = flushAsync.GetResult();
+            Assert.True(flushResult.IsCancelled);
+        }
+
+        [Fact]
+        public void FlushAsyncReturnsCanceledIfCancelledBeforeFlush()
+        {
+            var writableBuffer = _pipe.Writer.Alloc(64);
+            writableBuffer.Advance(64);
+
+            _pipe.Writer.CancelPendingFlush();
+
+            var flushAsync = writableBuffer.FlushAsync();
+
+            Assert.True(flushAsync.IsCompleted);
+            var flushResult = flushAsync.GetResult();
+            Assert.True(flushResult.IsCancelled);
         }
     }
 }
