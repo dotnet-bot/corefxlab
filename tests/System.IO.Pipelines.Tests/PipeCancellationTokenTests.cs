@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading;
+﻿using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -9,8 +6,8 @@ namespace System.IO.Pipelines.Tests
 {
     public class PipeCancellationTokenTests
     {
-        private IPipe _pipe;
-        private PipeFactory _pipeFactory;
+        private readonly IPipe _pipe;
+        private readonly PipeFactory _pipeFactory;
 
         public PipeCancellationTokenTests()
         {
@@ -26,11 +23,11 @@ namespace System.IO.Pipelines.Tests
         {
             _pipe.Writer.Complete();
             _pipe.Reader.Complete();
-            _pipeFactory?.Dispose();
+            _pipeFactory.Dispose();
         }
 
         [Fact]
-        public void GetResultThrowsIfReadAsyncCancellationTokenCancelled()
+        public void GetResultThrowsIfReadAsyncCancelledAfterOnCompleted()
         {
             var onCompletedCalled = false;
             var cancellationTokenSource = new CancellationTokenSource();
@@ -50,14 +47,25 @@ namespace System.IO.Pipelines.Tests
         }
 
         [Fact]
-        public void OnCompletedThrowsIfReadAsyncCancellationTokenCancelled()
+        public void GetResultThrowsIfReadAsyncCancelledBeforeOnCompleted()
         {
+            var onCompletedCalled = false;
             var cancellationTokenSource = new CancellationTokenSource();
+
             var awaiter = _pipe.Reader.ReadAsync(cancellationTokenSource.Token);
+            var awaiterIsCompleted = awaiter.IsCompleted;
 
             cancellationTokenSource.Cancel();
 
-            Assert.Throws<OperationCanceledException>(() => awaiter.OnCompleted(() => { }));
+            awaiter.OnCompleted(() =>
+            {
+                onCompletedCalled = true;
+                Assert.Throws<OperationCanceledException>(() => awaiter.GetResult());
+            });
+
+
+            Assert.False(awaiterIsCompleted);
+            Assert.True(onCompletedCalled);
         }
 
         [Fact]
@@ -68,6 +76,54 @@ namespace System.IO.Pipelines.Tests
 
             Assert.Throws<OperationCanceledException>(() => _pipe.Reader.ReadAsync(cancellationTokenSource.Token));
         }
+
+        [Fact]
+        public void GetResultThrowsIfFlushAsyncCancelledAfterOnCompleted()
+        {
+            var onCompletedCalled = false;
+            var cancellationTokenSource = new CancellationTokenSource();
+            var buffer = _pipe.Writer.Alloc(65);
+            buffer.Advance(65);
+
+            var awaiter = buffer.FlushAsync(cancellationTokenSource.Token);
+
+            awaiter.OnCompleted(() =>
+            {
+                onCompletedCalled = true;
+                Assert.Throws<OperationCanceledException>(() => awaiter.GetResult());
+            });
+
+            var awaiterIsCompleted = awaiter.IsCompleted;
+
+            cancellationTokenSource.Cancel();
+
+            Assert.False(awaiterIsCompleted);
+            Assert.True(onCompletedCalled);
+        }
+
+        [Fact]
+        public void GetResultThrowsIfFlushAsyncCancelledBeforeOnCompleted()
+        {
+            var onCompletedCalled = false;
+            var cancellationTokenSource = new CancellationTokenSource();
+            var buffer = _pipe.Writer.Alloc(65);
+            buffer.Advance(65);
+
+            var awaiter = buffer.FlushAsync(cancellationTokenSource.Token);
+            var awaiterIsCompleted = awaiter.IsCompleted;
+
+            cancellationTokenSource.Cancel();
+
+            awaiter.OnCompleted(() =>
+            {
+                onCompletedCalled = true;
+                Assert.Throws<OperationCanceledException>(() => awaiter.GetResult());
+            });
+
+            Assert.False(awaiterIsCompleted);
+            Assert.True(onCompletedCalled);
+        }
+
 
         [Fact]
         public void GetResultThrowsIfFlushAsyncCancellationTokenCancelled()
@@ -91,23 +147,6 @@ namespace System.IO.Pipelines.Tests
 
             Assert.False(awaiterIsCompleted);
             Assert.True(onCompletedCalled);
-        }
-
-        [Fact]
-        public void OnCompletedThrowsIfFlushAsyncCancellationTokenCancelled()
-        {
-            var cancellationTokenSource = new CancellationTokenSource();
-            var buffer = _pipe.Writer.Alloc(65);
-            buffer.Advance(65);
-
-            var awaiter = buffer.FlushAsync(cancellationTokenSource.Token);
-
-            var awaiterIsCompleted = awaiter.IsCompleted;
-
-            cancellationTokenSource.Cancel();
-
-            Assert.False(awaiterIsCompleted);
-            Assert.Throws<OperationCanceledException>(() => awaiter.OnCompleted(() => { }));
         }
 
         [Fact]
