@@ -296,5 +296,35 @@ namespace System.IO.Pipelines.Tests
 
             Assert.True(awaitable.IsCompleted);
         }
+
+        [Fact]
+        public async Task ReadAsyncCancellationE2E()
+        {
+            var cts = new CancellationTokenSource();
+            var e = new AutoResetEvent(false);
+            var cancelled = false;
+
+            Func<Task> taskFunc = async () =>
+            {
+                try
+                {
+                    var result = await Pipe.Reader.ReadAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelled = true;
+                    var result = await Pipe.Reader.ReadAsync();
+                    Assert.Equal(new byte[] { 1, 2, 3 }, result.Buffer.ToArray());
+                }
+            };
+
+            var task = taskFunc();
+
+            cts.Cancel();
+
+            await Pipe.Writer.WriteAsync(new byte[] { 1, 2, 3 });
+            await task;
+            Assert.True(cancelled);
+        }
     }
 }

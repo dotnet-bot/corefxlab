@@ -212,5 +212,38 @@ namespace System.IO.Pipelines.Tests
             Assert.True(flushAsync.IsCompleted);
         }
 
+        [Fact]
+        public async Task FlushAsyncCancellationE2E()
+        {
+            var cts = new CancellationTokenSource();
+            var cancelled = false;
+
+            Func<Task> taskFunc = async () =>
+            {
+                WritableBuffer buffer;
+                try
+                {
+                    buffer = Pipe.Writer.Alloc(MaximumSizeHigh);
+                    buffer.Advance(MaximumSizeHigh);
+                    await buffer.FlushAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelled = true;
+                    await buffer.FlushAsync();
+                }
+            };
+
+            var task = taskFunc();
+
+            cts.Cancel();
+
+            var result = await Pipe.Reader.ReadAsync();
+            Assert.Equal(new byte[MaximumSizeHigh], result.Buffer.ToArray());
+            Pipe.Reader.Advance(result.Buffer.End);
+            await task;
+            Assert.True(cancelled);
+        }
+
     }
 }
