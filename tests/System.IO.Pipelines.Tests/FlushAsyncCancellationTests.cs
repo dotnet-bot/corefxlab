@@ -4,7 +4,7 @@ using Xunit;
 
 namespace System.IO.Pipelines.Tests
 {
-    public class FlushAsyncCancellationTests: PipeTest
+    public class FlushAsyncCancellationTests : PipeTest
     {
 
         [Fact]
@@ -245,5 +245,44 @@ namespace System.IO.Pipelines.Tests
             Assert.True(cancelled);
         }
 
+        [Fact]
+        public void FlushAsyncCancellationDeadlock()
+        {
+            var cts = new CancellationTokenSource();
+            var cts2 = new CancellationTokenSource();
+
+            var buffer = Pipe.Writer.Alloc(MaximumSizeHigh);
+
+            buffer.Advance(MaximumSizeHigh);
+
+            var e = new ManualResetEventSlim();
+
+            var awaiter = buffer.FlushAsync(cts.Token);
+            awaiter.OnCompleted(() =>
+            {
+                // We are on cancellation thread and need to wait untill another FlushAsync call
+                // takes pipe state lock
+                e.Wait();
+
+                // Make sure we had enough time to reach _cancellationTokenRegistration.Dispose
+                Thread.Sleep(100);
+
+                // Try to take pipe state lock
+                buffer.FlushAsync();
+            });
+
+            // Start a thread that would run cancellation calbacks
+            var cancellationTask = Task.Run(() => cts.Cancel());
+            // Start a thread that would call FlushAsync with different token
+            // and block on _cancellationTokenRegistration.Dispose
+            var blockingTask = Task.Run(() =>
+            {
+                e.Set();
+                buffer.FlushAsync(cts2.Token);
+            });
+
+            var completed = Task.WhenAll(cancellationTask, blockingTask).Wait(TimeSpan.FromSeconds(10));
+            Assert.True(completed);
+        }
     }
 }

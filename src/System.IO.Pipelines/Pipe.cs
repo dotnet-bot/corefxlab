@@ -329,6 +329,7 @@ namespace System.IO.Pipelines
         internal WritableBufferAwaitable FlushAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
             Action awaitable;
+            CancellationTokenRegistration cancellationTokenRegistration;
             lock (_sync)
             {
                 if (_writingState.IsActive)
@@ -339,8 +340,10 @@ namespace System.IO.Pipelines
 
                 awaitable = _readerAwaitable.Complete();
 
-                _writerAwaitable.AttachToken(cancellationToken, _signalWriterAwaitable, this);
+                cancellationTokenRegistration = _writerAwaitable.AttachToken(cancellationToken, _signalWriterAwaitable, this);
             }
+
+            cancellationTokenRegistration.Dispose();
 
             TrySchedule(_readerScheduler, awaitable);
 
@@ -501,14 +504,16 @@ namespace System.IO.Pipelines
         /// <returns>A <see cref="PipeAwaitable"/> representing the asynchronous read operation.</returns>
         ReadableBufferAwaitable IPipeReader.ReadAsync(CancellationToken token)
         {
+            CancellationTokenRegistration cancellationTokenRegistration;
             if (_readerCompletion.IsCompleted)
             {
                 ThrowHelper.ThrowInvalidOperationException(ExceptionResource.NoReadingAllowed, _readerCompletion.Location);
             }
             lock (_sync)
             {
-                _readerAwaitable.AttachToken(token, _signalReaderAwaitable, this);
+                cancellationTokenRegistration= _readerAwaitable.AttachToken(token, _signalReaderAwaitable, this);
             }
+            cancellationTokenRegistration.Dispose();
             return new ReadableBufferAwaitable(this);
         }
 

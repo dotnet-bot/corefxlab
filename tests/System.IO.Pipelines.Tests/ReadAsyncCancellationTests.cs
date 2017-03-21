@@ -326,5 +326,38 @@ namespace System.IO.Pipelines.Tests
             await task;
             Assert.True(cancelled);
         }
+
+        [Fact]
+        public void FlushAsyncCancellationDeadlock()
+        {
+            var cts = new CancellationTokenSource();
+            var cts2 = new CancellationTokenSource();
+            var e = new ManualResetEventSlim();
+
+            var awaiter = Pipe.Reader.ReadAsync(cts.Token);
+            awaiter.OnCompleted(() =>
+            {
+                // We are on cancellation thread and need to wait untill another ReadAsync call
+                // takes pipe state lock
+                e.Wait();
+                // Make sure we had enough time to reach _cancellationTokenRegistration.Dispose
+                Thread.Sleep(100);
+                // Try to take pipe state lock
+                Pipe.Reader.ReadAsync();
+            });
+
+            // Start a thread that would run cancellation calbacks
+            var cancellationTask = Task.Run(() => cts.Cancel());
+            // Start a thread that would call ReadAsync with different token
+            // and block on _cancellationTokenRegistration.Dispose
+            var blockingTask = Task.Run(() =>
+            {
+                e.Set();
+                Pipe.Reader.ReadAsync(cts2.Token);
+            });
+
+            var completed = Task.WhenAll(cancellationTask, blockingTask).Wait(TimeSpan.FromSeconds(10));
+            Assert.True(completed);
+        }
     }
 }
