@@ -230,5 +230,71 @@ namespace System.IO.Pipelines.Tests
 
             Pipe.Reader.Advance(buffer.Start, buffer.Start);
         }
+
+        [Fact]
+        public void ReadAsyncNotCompletedAfterCancellation()
+        {
+            bool onCompletedCalled = false;
+            var awaitable = Pipe.Reader.ReadAsync();
+
+            Assert.False(awaitable.IsCompleted);
+            awaitable.OnCompleted(() =>
+            {
+                onCompletedCalled = true;
+                Assert.True(awaitable.IsCompleted);
+
+                var readResult = awaitable.GetResult();
+                Assert.True(readResult.IsCancelled);
+
+                awaitable = Pipe.Reader.ReadAsync();
+                Assert.False(awaitable.IsCompleted);
+            });
+
+            Pipe.Reader.CancelPendingRead();
+            Assert.True(onCompletedCalled);
+        }
+
+
+        [Fact]
+        public void ReadAsyncNotCompletedAfterCancellationTokenCancelled()
+        {
+            bool onCompletedCalled = false;
+            var cts = new CancellationTokenSource();
+            var awaitable = Pipe.Reader.ReadAsync(cts.Token);
+
+            Assert.False(awaitable.IsCompleted);
+            awaitable.OnCompleted(() =>
+            {
+                onCompletedCalled = true;
+                Assert.True(awaitable.IsCompleted);
+
+                Assert.Throws<OperationCanceledException>(() => awaitable.GetResult());
+
+                awaitable = Pipe.Reader.ReadAsync();
+                Assert.False(awaitable.IsCompleted);
+            });
+
+            cts.Cancel();
+            Assert.True(onCompletedCalled);
+        }
+
+        [Fact]
+        public void ReadAsyncCompletedAfterPreCancellation()
+        {
+            Pipe.Reader.CancelPendingRead();
+            Pipe.Writer.WriteAsync(new byte[] {1, 2, 3}).GetAwaiter().GetResult();
+
+            var awaitable = Pipe.Reader.ReadAsync();
+
+            Assert.True(awaitable.IsCompleted);
+
+            var result = awaitable.GetResult();
+
+            Assert.True(result.IsCancelled);
+
+            awaitable = Pipe.Reader.ReadAsync();
+
+            Assert.True(awaitable.IsCompleted);
+        }
     }
 }
