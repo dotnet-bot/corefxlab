@@ -23,6 +23,7 @@ namespace System.IO.Pipelines
             _state = completed ? _awaitableIsCompleted : _awaitableIsNotCompleted;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public CancellationTokenRegistration AttachToken(CancellationToken cancellationToken, Action<object> callback, object state)
         {
             CancellationTokenRegistration oldRegistration;
