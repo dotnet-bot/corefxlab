@@ -26,7 +26,7 @@ namespace System.IO.Pipelines
         public CancellationTokenRegistration AttachToken(CancellationToken cancellationToken, Action<object> callback, object state)
         {
             CancellationTokenRegistration oldRegistration;
-            if (cancellationToken != _cancellationToken)
+            if (!cancellationToken.Equals(_cancellationToken))
             {
                 oldRegistration = _cancellationTokenRegistration;
                 _cancellationToken = cancellationToken;
@@ -57,8 +57,7 @@ namespace System.IO.Pipelines
         public void Reset()
         {
             if (ReferenceEquals(_state, _awaitableIsCompleted) &&
-                _cancelledState != CancelledState.CancellationRequested &&
-                _cancelledState != CancelledState.CancellationPreRequested)
+                _cancelledState < CancelledState.CancellationPreRequested)
             {
                 _state = _awaitableIsNotCompleted;
             }
@@ -118,7 +117,7 @@ namespace System.IO.Pipelines
 
             bool isPrerequested = _cancelledState == CancelledState.CancellationPreRequested;
 
-            if (_cancelledState == CancelledState.CancellationRequested || isPrerequested)
+            if (_cancelledState >= CancelledState.CancellationPreRequested)
             {
                 _cancelledState = CancelledState.CancellationObserved;
 
