@@ -645,6 +645,46 @@ namespace System.IO.Pipelines.Tests
             Assert.True(flushTask.IsCompleted);
         }
 
+        [Fact]
+        public void ReadAsyncCompletedAfterPreCancellation()
+        {
+            _pipe.Reader.CancelPendingRead();
+            _pipe.Writer.WriteAsync(new byte[] { 1, 2, 3 }).GetAwaiter().GetResult();
+
+            var awaitable = _pipe.Reader.ReadAsync();
+
+            Assert.True(awaitable.IsCompleted);
+
+            var result = awaitable.GetResult();
+
+            Assert.True(result.IsCancelled);
+
+            awaitable = _pipe.Reader.ReadAsync();
+
+            Assert.True(awaitable.IsCompleted);
+        }
+        [Fact]
+
+        public void FlushAsyncCompletedAfterPreCancellation()
+        {
+            var writableBuffer = _pipe.Writer.Alloc(1);
+            writableBuffer.Advance(1);
+
+            _pipe.Writer.CancelPendingFlush();
+
+            var flushAsync = writableBuffer.FlushAsync();
+
+            Assert.True(flushAsync.IsCompleted);
+
+            var flushResult = flushAsync.GetResult();
+
+            Assert.True(flushResult.IsCancelled);
+
+            flushAsync = writableBuffer.FlushAsync();
+
+            Assert.True(flushAsync.IsCompleted);
+        }
+
         private class DisposeTrackingBufferPool : BufferPool
         {
             private DisposeTrackingOwnedMemory _memory = new DisposeTrackingOwnedMemory(new byte[1]);
